@@ -1,0 +1,97 @@
+# Multi-stage build for Faster-Whisper GPU server + Next.js frontend
+# Stage 1: Node.js frontend builder
+FROM node:25-alpine AS frontend-builder
+
+WORKDIR /app
+
+# Copy frontend dependencies
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy frontend code
+COPY app ./app
+COPY components ./components
+COPY lib ./lib
+COPY public ./public
+COPY tsconfig.json next.config.js tailwind.config.js postcss.config.js components.json ./
+
+# Build Next.js
+RUN npm run build
+
+# Stage 2: Python dependencies builder
+FROM python:3.12-slim AS python-builder
+
+WORKDIR /build
+
+# Install build dependencies and uv
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    wget \
+    && pip install --no-cache-dir uv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy project files
+COPY infra/pyproject.toml .
+
+# Build wheels with uv
+RUN uv sync --frozen --no-editable
+
+# Build wheels for all dependencies and local project
+RUN uv pip wheel --output-dir /build/wheels .
+
+# Stage 3: Runtime
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+
+# Create non-root user for security
+RUN groupadd --gid 1000 appgroup && \
+    useradd --uid 1000 --gid appgroup --shell /bin/bash --create-home appuser
+
+WORKDIR /app
+
+# Install runtime dependencies (Node.js, uv, system packages)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ffmpeg \
+    libsndfile1 \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && pip install --no-cache-dir uv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy frontend build from stage 1
+COPY --from=frontend-builder /app/.next ./.next
+COPY --from=frontend-builder /app/node_modules ./node_modules
+COPY --from=frontend-builder /app/package.json ./
+
+# Copy Python wheels from stage 2
+COPY --from=python-builder /build/wheels /wheels
+COPY --from=python-builder /build/requirements.txt .
+
+# Install Python dependencies from wheels
+RUN uv pip install --no-cache /wheels/*
+
+# Copy Python server
+COPY infra/faster_whisper_server.py ./faster_whisper_server.py
+
+# Create model cache directory and set ownership
+RUN mkdir -p /home/appuser/.cache/huggingface/hub && \
+    chown -R appuser:appgroup /app /home/appuser/.cache
+
+# Set environment for non-root user
+ENV HF_HOME=/home/appuser/.cache/huggingface
+
+# Switch to non-root user
+USER appuser
+
+# Expose ports (3000 for Next.js frontend, 8000 for Python backend)
+EXPOSE 3000 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000 || exit 1
+
+# Run both frontend and backend
+CMD ["sh", "-c", "npm start & python faster_whisper_server.py"]
