@@ -6,7 +6,6 @@ build-backend = "hatchling.build"
 name = "podcast-realtime-transcription"
 version = "0.1.0"
 description = "Podcast 🎧 + live transcription + tap-to-jump navigation"
-readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.123.9",
@@ -19,5 +18,5 @@ dependencies = [
     "uvicorn>=0.38.0",
 ]
 
-[tool.uv]
-allowed-deprecations = []
+[tool.hatch.build.targets.wheel]
+packages = []

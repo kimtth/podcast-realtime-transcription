@@ -19,7 +19,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2022-09-01' = {
   }
   sku: {
     name: appServiceSkuName
-    tier: appServiceSkuName == 'P1V2' ? 'PremiumV2' : 'Premium'
+    tier: 'PremiumV2'
     capacity: 1
   }
 }

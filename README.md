@@ -1,6 +1,7 @@
 # Podcast Player
 
-Lean podcast player with multi-engine transcription and switchable search providers.
+Lean podcast player with multi-engine transcription and switchable search providers.  
+A demo application to evaluate multiple options for Azure application deployments.  
 
 ## What it does
 - Play, subscribe, download, and resume podcasts
@@ -26,12 +27,11 @@ npm run dev
 
 ## Transcription engines
 - **Azure Speech:** cloud accuracy, needs your Azure key/region (saved locally)
-- **Faster-Whisper:** self-hosted FastAPI server (python) then set URL in Settings
+- **Faster-Whisper:** self-hosted FastAPI server (python)
 
 ## Privacy
 - API keys and server URLs live in your browser storage only. (no .env file)
 - Azure sends to Microsoft; Faster-Whisper stays local.
 
 ## Deploy
-- See [AGENTS.md](AGENTS.md#deployment-to-azure) for cloud deployment options.  
-- Deployment in Azure Container Apps vs Azure Container Instances vs Azure Kubernetes Service vs Azure App Service.
+- See [AGENTS.md](AGENTS.md#deployment-to-azure) for PowerShell deployment steps (Container Apps, ACI, App Service, AKS).
