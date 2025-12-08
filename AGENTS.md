@@ -54,11 +54,6 @@ sequenceDiagram
 - Audio never touches Next.js Server Actions (no size limit)
 - Works for both Azure deployments and local development
 
-**User Experience**:
-- **Auto-detect mode** (default): Users don't configure anything, works out-of-the-box
-- **Custom server mode**: Advanced users can point to external Faster-Whisper installations
-- No need to understand internal architecture or port mappings
-
 ## Transcription Engines Comparison
 
 | Feature | Azure Speech | Faster-Whisper |
