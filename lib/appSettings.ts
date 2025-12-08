@@ -6,6 +6,8 @@ export interface AppSettings {
   transcriptionEngine: 'azure' | 'fasterwhisper'
   azureSpeechKey?: string
   azureSpeechEndpoint?: string
+  azureSpeechLocale?: string
+  fasterWhisperUrl?: string // 'auto' (default) or custom URL
   searchProvider: 'itunes' | 'podcastindex'
   podcastIndexKey?: string
   podcastIndexSecret?: string
@@ -30,6 +32,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   transcriptionEngine: 'azure',
   azureSpeechKey: '',
   azureSpeechEndpoint: 'https://eastus.api.cognitive.microsoft.com/',
+  azureSpeechLocale: 'en-US',
+  fasterWhisperUrl: 'auto',
   searchProvider: 'itunes',
   podcastIndexKey: '',
   podcastIndexSecret: '',
@@ -92,6 +96,14 @@ export function updateAzureSpeechCredentials(key: string, endpoint: string): voi
   saveSettings({ azureSpeechKey: key, azureSpeechEndpoint: endpoint })
 }
 
+export function updateAzureSpeechLocale(locale: string): void {
+  saveSettings({ azureSpeechLocale: locale || 'en-US' })
+}
+
+export function updateFasterWhisperUrl(url: string): void {
+  saveSettings({ fasterWhisperUrl: url || 'auto' })
+}
+
 // Listening history
 export function addToListeningHistory(episodeId: number | string, podcastId: number, lastPosition: number): void {
   const settings = getSettings()
@@ -134,6 +146,7 @@ export function exportSettings(): string {
     transcriptionEngine: settings.transcriptionEngine,
     azureSpeechKey: settings.azureSpeechKey || '',
     azureSpeechEndpoint: settings.azureSpeechEndpoint || '',
+    azureSpeechLocale: settings.azureSpeechLocale || 'en-US',
     searchProvider: settings.searchProvider,
     podcastIndexKey: settings.podcastIndexKey || '',
     podcastIndexSecret: settings.podcastIndexSecret || '',

@@ -17,6 +17,8 @@ import {
   updateSearchProvider,
   updatePodcastIndexCredentials,
   updateAzureSpeechCredentials,
+  updateAzureSpeechLocale,
+  updateFasterWhisperUrl,
   exportSettings,
   importSettings,
   resetSettings,
@@ -213,6 +215,26 @@ export default function Settings({ onClose }: SettingsProps) {
                         placeholder="e.g., https://eastus.api.cognitive.microsoft.com"
                       />
                     </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-foreground">Locale</label>
+                      <select
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={settings.azureSpeechLocale || 'en-US'}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          const updated = { ...settings, azureSpeechLocale: value }
+                          setSettings(updated)
+                          updateAzureSpeechLocale(value)
+                          setSaved(true)
+                          setTimeout(() => setSaved(false), 2000)
+                        }}
+                      >
+                        {[ 'en-US', 'en-GB', 'en-AU', 'en-IN', 'es-ES', 'es-MX', 'fr-FR', 'fr-CA', 'de-DE', 'it-IT', 'ja-JP', 'ko-KR', 'zh-CN' ].map(loc => (
+                          <option key={loc} value={loc}>{loc}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-muted-foreground">Matches the locale of your audio for best accuracy.</p>
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       Get your endpoint at <a href="https://portal.azure.com" target="_blank" rel="noopener" className="underline">Azure Portal</a> → Cognitive Services → Speech. Format: <code className="bg-gray-100 px-1 rounded">https://REGION.api.cognitive.microsoft.com</code>
                     </p>
@@ -220,10 +242,69 @@ export default function Settings({ onClose }: SettingsProps) {
                 )}
 
                 {settings.transcriptionEngine === 'fasterwhisper' && (
-                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                    <p className="text-xs text-purple-700">
-                      <strong>Faster-Whisper:</strong> GPU-accelerated transcription running on your own server. Download Docker container, configure server URL, and transcribe locally with high accuracy. Requires Docker and GPU for optimal performance.
-                    </p>
+                  <div className="space-y-3">
+                    <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                      <p className="text-xs text-purple-700">
+                        <strong>Faster-Whisper:</strong> GPU-accelerated transcription running on your own server. Download Docker container, configure server URL, and transcribe locally with high accuracy. Requires Docker and GPU for optimal performance.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Server Configuration</label>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            id="fw-auto"
+                            name="fw-mode"
+                            checked={!settings.fasterWhisperUrl || settings.fasterWhisperUrl === 'auto'}
+                            onChange={() => {
+                              updateFasterWhisperUrl('auto')
+                              setSettings({ ...settings, fasterWhisperUrl: 'auto' })
+                              setSaved(true)
+                              setTimeout(() => setSaved(false), 2000)
+                            }}
+                            className="w-4 h-4"
+                          />
+                          <label htmlFor="fw-auto" className="text-sm cursor-pointer">
+                            <strong>Auto-detect</strong> (Recommended)
+                            <p className="text-xs text-muted-foreground">Uses built-in server (localhost:8000)</p>
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            id="fw-custom"
+                            name="fw-mode"
+                            checked={!!(settings.fasterWhisperUrl && settings.fasterWhisperUrl !== 'auto')}
+                            onChange={() => {
+                              updateFasterWhisperUrl('http://')
+                              setSettings({ ...settings, fasterWhisperUrl: 'http://' })
+                              setSaved(true)
+                              setTimeout(() => setSaved(false), 2000)
+                            }}
+                            className="w-4 h-4"
+                          />
+                          <label htmlFor="fw-custom" className="text-sm cursor-pointer">
+                            <strong>Custom server</strong>
+                            <p className="text-xs text-muted-foreground">External Faster-Whisper installation</p>
+                          </label>
+                        </div>
+                      </div>
+                      {settings.fasterWhisperUrl && settings.fasterWhisperUrl !== 'auto' && (
+                        <Input
+                          type="text"
+                          value={settings.fasterWhisperUrl || ''}
+                          onChange={(e) => {
+                            const updated = { ...settings, fasterWhisperUrl: e.target.value }
+                            setSettings(updated)
+                            updateFasterWhisperUrl(e.target.value)
+                            setSaved(true)
+                            setTimeout(() => setSaved(false), 2000)
+                          }}
+                          placeholder="http://192.168.1.100:8000"
+                        />
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

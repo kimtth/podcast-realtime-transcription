@@ -2,52 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get('url')
-  
-  if (!url) {
-    return NextResponse.json({ error: 'URL parameter required' }, { status: 400 })
-  }
+  if (!url) return NextResponse.json({ error: 'URL required' }, { status: 400 })
 
   try {
-    // Validate URL
-    const parsedUrl = new URL(url)
-    
-    // Fetch the file from the external URL
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'PodcastApp/1.0',
-      },
-    })
+    new URL(url) // Validate URL format
 
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: `Failed to fetch: ${response.status} ${response.statusText}` },
-        { status: response.status }
-      )
-    }
+    const res = await fetch(url, { headers: { 'User-Agent': 'PodcastApp/1.0' } })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
-    // Get content type
-    const contentType = response.headers.get('content-type') || 'audio/mpeg'
-    const contentLength = response.headers.get('content-length')
-
-    // Stream the response
     const headers = new Headers({
-      'Content-Type': contentType,
+      'Content-Type': res.headers.get('content-type') || 'audio/mpeg',
       'Access-Control-Allow-Origin': '*',
     })
 
-    if (contentLength) {
-      headers.set('Content-Length', contentLength)
-    }
+    const contentLength = res.headers.get('content-length')
+    if (contentLength) headers.set('Content-Length', contentLength)
 
-    return new NextResponse(response.body, {
-      status: 200,
-      headers,
-    })
+    return new NextResponse(res.body, { headers })
   } catch (error) {
-    console.error('Proxy download error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Download failed' },
-      { status: 500 }
-    )
+    const msg = error instanceof Error ? error.message : 'Download failed'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

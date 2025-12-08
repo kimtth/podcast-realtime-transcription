@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Mic, Square, AlertCircle, Settings } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { Mic, Square, AlertCircle } from 'lucide-react'
+import { getSettings } from '@/lib/appSettings'
 import { saveTranscript } from '@/lib/storage'
 import { splitTranscriptionIntoSegments } from '@/lib/utils'
 
@@ -21,48 +21,25 @@ interface AzureSpeechTranscriberProps {
   episodeId?: number | string
   podcastId?: number
   onTranscriptUpdate?: (segments: Segment[]) => void
+  onSeek?: (time: number) => void
+  initialSegments?: Segment[]
 }
 
-export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId, onTranscriptUpdate }: AzureSpeechTranscriberProps) {
-  const [segments, setSegments] = useState<Segment[]>([])
+export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId, onTranscriptUpdate, onSeek, initialSegments }: AzureSpeechTranscriberProps) {
+  const [segments, setSegments] = useState<Segment[]>(initialSegments || [])
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [currentText, setCurrentText] = useState('')
   const [progress, setProgress] = useState(0)
-  const [showConfig, setShowConfig] = useState(false)
-  const [apiKey, setApiKey] = useState('')
-  const [endpoint, setEndpoint] = useState('https://eastus.api.cognitive.microsoft.com')
-  const [isSaved, setIsSaved] = useState(false)
   const abortControllerRef = React.useRef<AbortController | null>(null)
 
-  // Load saved config
-  useEffect(() => {
-    const savedKey = localStorage.getItem('azure_speech_key')
-    const savedEndpoint = localStorage.getItem('azure_speech_endpoint')
-    if (savedKey) setApiKey(savedKey)
-    if (savedEndpoint) setEndpoint(savedEndpoint)
-  }, [])
-
-  const saveConfig = useCallback(() => {
-    if (!apiKey.trim()) {
-      setError('API Key is required')
-      return
-    }
-    if (!endpoint.trim()) {
-      setError('Endpoint is required')
-      return
-    }
-    localStorage.setItem('azure_speech_key', apiKey)
-    localStorage.setItem('azure_speech_endpoint', endpoint)
-    setIsSaved(true)
-    setShowConfig(false)
-    setTimeout(() => setIsSaved(false), 2000)
-  }, [apiKey, endpoint])
-
   const startTranscription = useCallback(async () => {
-    if (!apiKey.trim()) {
-      setError('Azure Speech API Key not configured. Please configure in settings.')
-      setShowConfig(true)
+    const settings = getSettings()
+    const apiKey = settings.azureSpeechKey
+    const endpoint = settings.azureSpeechEndpoint
+    const locale = settings.azureSpeechLocale || 'en-US'
+
+    if (!apiKey || !endpoint) {
+      setError('Azure credentials not configured. Please set them in Settings.')
       return
     }
 
@@ -70,53 +47,87 @@ export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId,
       setError(null)
       setIsTranscribing(true)
       setSegments([])
-      setCurrentText('')
       setProgress(0)
 
       abortControllerRef.current = new AbortController()
 
-      // Use backend proxy for Azure Speech (bypasses Next.js size limits)
-      const speechResponse = await fetch(`/api/proxy-azure-speech`, {
+      const readError = async (res: Response) => {
+        const text = await res.text()
+        try {
+          return { text, parsed: JSON.parse(text) }
+        } catch (_) {
+          return { text }
+        }
+      }
+
+      const postJson = () => fetch(`/api/proxy-azure-speech`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          audioUrl,
-          endpoint,
-          apiKey,
-        }),
-        signal: abortControllerRef.current.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audioUrl, endpoint, apiKey, locale }),
+        signal: abortControllerRef.current!.signal,
       })
+
+      const postBlob = async () => {
+        const blobRes = await fetch(audioUrl, { signal: abortControllerRef.current!.signal })
+        if (!blobRes.ok) throw new Error(`Failed to fetch audio locally: ${blobRes.statusText}`)
+        const fd = new FormData()
+        fd.append('audioBlob', await blobRes.blob(), 'audio.wav')
+        fd.append('endpoint', endpoint)
+        fd.append('apiKey', apiKey)
+        fd.append('locale', locale)
+        return fetch(`/api/proxy-azure-speech`, { method: 'POST', body: fd, signal: abortControllerRef.current!.signal })
+      }
+
+      let speechResponse = await postJson()
+      if (!speechResponse.ok) {
+        const err = await readError(speechResponse)
+        if (err.parsed?.stage === 'download') speechResponse = await postBlob()
+      }
 
       setProgress(50)
 
       if (!speechResponse.ok) {
-        throw new Error(`Azure error: ${speechResponse.statusText}`)
+        const err = await readError(speechResponse)
+        const msg = err.parsed?.error || err.text || 'Azure error'
+        throw new Error(msg)
       }
 
       const result = await speechResponse.json()
 
-      // Extract transcription text from fast transcription API response
-      const transcriptionText = result.combinedPhrases?.[0]?.text || 
-                                result.phrases?.[0]?.text ||
-                                result.text || 
-                                'Transcription successful'
+      // Prefer Azure offsets for accurate tap-to-seek
+      const phrases = Array.isArray(result?.combinedPhrases) && result.combinedPhrases.length
+        ? result.combinedPhrases
+        : Array.isArray(result?.phrases) && result.phrases.length
+          ? result.phrases
+          : null
 
-      if (transcriptionText) {
-        // Use duration from Azure Speech response, or estimate from word count if unavailable
-        const durationMs = result.duration || (transcriptionText.split(' ').length * 300) // ~300ms per word average
+      const azureSegments: Segment[] | null = phrases
+        ? phrases
+            .map((p: any) => {
+              const text = p.text || p.display || p.lexical || ''
+              if (!text) return null
+              const start = (p.offsetMilliseconds ?? p.offset ?? 0) / 1000
+              const durMs = p.durationMilliseconds ?? p.duration ?? 0
+              const end = durMs ? start + durMs / 1000 : start + 5
+              return { start, end, text, isFinal: true }
+            })
+            .filter(Boolean) as Segment[]
+        : null
 
-        const split = splitTranscriptionIntoSegments(transcriptionText, durationMs, 8)
-        const mapped: Segment[] = split.map(seg => ({
-          start: seg.start,
-          end: seg.end,
-          text: seg.text,
-          isFinal: true,
-        }))
+      const transcriptionText = result.text || result.combinedPhrases?.[0]?.text || result.phrases?.[0]?.text || ''
+
+      let mapped: Segment[] = []
+
+      if (azureSegments && azureSegments.length) {
+        mapped = azureSegments
+      } else if (transcriptionText) {
+        const durationMs = result.duration || result.durationMilliseconds || transcriptionText.split(' ').length * 300 // rough estimate
+        mapped = splitTranscriptionIntoSegments(transcriptionText, durationMs, 8).map(seg => ({ ...seg, isFinal: true }))
+      }
+
+      if (mapped.length > 0) {
 
         setSegments(mapped)
-        setCurrentText('')
         setProgress(100)
 
         if (episodeId && podcastId) {
@@ -144,7 +155,7 @@ export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId,
       }
       setIsTranscribing(false)
     }
-  }, [apiKey, endpoint, audioUrl, onTranscriptUpdate, episodeId, podcastId])
+  }, [audioUrl, onTranscriptUpdate, episodeId, podcastId])
 
   const stopTranscription = useCallback(() => {
     if (abortControllerRef.current) {
@@ -152,7 +163,6 @@ export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId,
       abortControllerRef.current = null
     }
     setIsTranscribing(false)
-    setCurrentText('')
     setProgress(0)
     setError(null)
   }, [])
@@ -168,65 +178,24 @@ export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId,
                 Cloud-based transcription with high accuracy
               </p>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowConfig(!showConfig)}
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Config
-              </Button>
-              <Button
-                onClick={isTranscribing ? stopTranscription : startTranscription}
-                variant={isTranscribing ? 'destructive' : 'default'}
-                disabled={!audioUrl}
-              >
-                {isTranscribing ? (
-                  <>
-                    <Square className="w-4 h-4 mr-2" />
-                    Stop
-                  </>
-                ) : (
-                  <>
-                    <Mic className="w-4 h-4 mr-2" />
-                    Start
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-
-          {showConfig && (
-            <div className="space-y-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <div>
-                <label className="text-sm font-medium">API Key</label>
-                <Input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Your Azure Speech API key"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Endpoint</label>
-                <Input
-                  type="text"
-                  value={endpoint}
-                  onChange={(e) => setEndpoint(e.target.value)}
-                  placeholder="e.g., https://eastus.api.cognitive.microsoft.com/"
-                  className="mt-1"
-                />
-              </div>
-              <Button onClick={saveConfig} className="w-full">
-                Save Configuration
-              </Button>
-              {isSaved && (
-                <p className="text-xs text-green-600">✓ Configuration saved</p>
+            <Button
+              onClick={isTranscribing ? stopTranscription : startTranscription}
+              variant={isTranscribing ? 'destructive' : 'default'}
+              disabled={!audioUrl}
+            >
+              {isTranscribing ? (
+                <>
+                  <Square className="w-4 h-4 mr-2" />
+                  Stop
+                </>
+              ) : (
+                <>
+                  <Mic className="w-4 h-4 mr-2" />
+                  Start
+                </>
               )}
-            </div>
-          )}
+            </Button>
+          </div>
 
           {error && (
             <div className="flex items-center gap-2 p-3 bg-red-50 text-red-600 rounded-md">
@@ -248,6 +217,26 @@ export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId,
                 />
               </div>
             </div>
+          )}
+
+          {segments.length > 0 && (
+            <ScrollArea className="h-64 border rounded-lg p-4">
+              <div className="space-y-2">
+                {segments.map((seg, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => onSeek?.(seg.start)}
+                    className="w-full text-left text-sm p-2 rounded hover:bg-muted transition"
+                  >
+                    <span className="font-mono text-xs text-muted-foreground mr-2">
+                      {new Date(seg.start * 1000).toISOString().substr(11, 8)}
+                    </span>
+                    <span>{seg.text}</span>
+                  </button>
+                ))}
+              </div>
+            </ScrollArea>
           )}
         </div>
       </Card>

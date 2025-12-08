@@ -687,6 +687,8 @@ export default function Home() {
                 audioUrl={currentEpisode?.enclosureUrl || ''}
                 episodeId={currentEpisode?.id}
                 podcastId={typeof currentPodcast?.id === 'number' ? currentPodcast.id : currentPodcast?.id ? parseInt(String(currentPodcast.id)) : undefined}
+                onSeek={(t) => playerRef.current?.seek(t)}
+                initialSegments={segments.map(s => ({ start: s.time, end: s.time + 5, text: s.text, isFinal: true }))}
                 onTranscriptUpdate={(newSegments) => {
                   const mapped = newSegments.map(s => ({ time: s.start, text: s.text }))
                   setSegments(mapped)
@@ -701,6 +703,8 @@ export default function Home() {
               <FasterWhisperTranscriber
                 audioUrl={currentEpisode?.enclosureUrl || ''}
                 originalUrl={(currentEpisode as any)?.originalEnclosureUrl}
+                onSeek={(t) => playerRef.current?.seek(t)}
+                initialSegments={segments.map(s => ({ start: s.time, end: s.time + 5, text: s.text, isFinal: true }))}
                 onTranscriptUpdate={(newSegments) => {
                   const mapped = newSegments.map(s => ({ time: s.start, text: s.text }))
                   setSegments(mapped)

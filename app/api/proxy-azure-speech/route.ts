@@ -1,84 +1,107 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
- * Proxy endpoint for Azure Speech transcription that bypasses Next.js body size limits
- * Architecture: Client -> Next.js API -> Download Audio -> Forward to Azure Speech
- * This avoids sending large files through Next.js Server Actions
+ * Proxy endpoint for Azure Speech transcription via FastAPI
+ * Bypasses Next.js body size limits
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
-    const { audioUrl, endpoint, apiKey } = body
+    const requestContentType = req.headers.get('content-type') || ''
+    let endpoint: string | null = null
+    let apiKey: string | null = null
+    let audioUrl: string | null = null
+    let locale: string | null = null
+    let uploadedBlob: Blob | null = null
 
-    if (!audioUrl) {
-      return NextResponse.json({ error: 'Audio URL is required' }, { status: 400 })
+    if (requestContentType.includes('application/json')) {
+      const body = await req.json()
+      endpoint = body.endpoint ?? null
+      apiKey = body.apiKey ?? null
+      audioUrl = body.audioUrl ?? null
+      locale = body.locale ?? null
+    } else if (requestContentType.includes('multipart/form-data')) {
+      const formData = await req.formData()
+      endpoint = formData.get('endpoint') as string | null
+      apiKey = formData.get('apiKey') as string | null
+      audioUrl = formData.get('audioUrl') as string | null
+      locale = (formData.get('locale') as string | null) ?? null
+      uploadedBlob = formData.get('audioBlob') as Blob | null
+    } else {
+      return NextResponse.json({ error: 'Unsupported content type' }, { status: 400 })
     }
 
     if (!endpoint || !apiKey) {
-      return NextResponse.json({ error: 'Azure endpoint and API key are required' }, { status: 400 })
+      return NextResponse.json({ error: 'Azure endpoint and key required' }, { status: 400 })
     }
 
-    // Download audio file from source (podcast CDN)
-    console.log(`[proxy-azure-speech] Downloading audio from: ${audioUrl}`)
-    const audioResponse = await fetch(audioUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; PodcastTranscriber/1.0)',
-      },
+    if (!uploadedBlob && !audioUrl) return NextResponse.json({ error: 'audioUrl or audioBlob is required' }, { status: 400 })
+
+    let audioBlob: Blob
+    if (uploadedBlob) {
+      audioBlob = uploadedBlob
+    } else {
+      // Download audio server-side first
+      const audioRes = await fetch(audioUrl!, { headers: { 'User-Agent': 'PodcastTranscriber/1.0' } }).catch((err: any) => err)
+      if (!(audioRes instanceof Response) || !audioRes.ok || !audioRes.body) {
+        const status = audioRes instanceof Response ? audioRes.status : 502
+        const message = audioRes instanceof Response ? audioRes.statusText : 'download failed'
+        return NextResponse.json({ error: `Failed to download audio: ${message}`, status, stage: 'download' }, { status })
+      }
+
+      audioBlob = await audioRes.blob()
+    }
+
+    // Use fast transcription API: https://{region}.api.cognitive.microsoft.com/speechtotext/transcriptions:transcribe
+    const base = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint
+    const transcribeUrl = `${base}/speechtotext/transcriptions:transcribe?api-version=2025-10-15`
+
+    console.log(`[proxy-azure-speech] Fast transcription endpoint: ${transcribeUrl}`)
+
+    const definition = JSON.stringify({
+      locales: locale ? [locale] : ['en-US'],
     })
 
-    if (!audioResponse.ok) {
-      throw new Error(`Failed to download audio: ${audioResponse.statusText}`)
-    }
-
-    const contentType = audioResponse.headers.get('content-type') || 'audio/mpeg'
-    const contentLength = audioResponse.headers.get('content-length')
-    console.log(`[proxy-azure-speech] Audio downloaded, type: ${contentType}, size: ${contentLength} bytes`)
-
-    // Convert response to blob
-    const audioBlob = await audioResponse.blob()
-
-    // Create FormData for Azure Speech API
     const formData = new FormData()
     formData.append('audio', audioBlob, 'audio.wav')
-    formData.append('definition', JSON.stringify({
-      locales: ['en-US']
-    }))
+    formData.append('definition', definition)
 
-    // Azure Speech fast transcription API endpoint
-    const transcribeUrl = new URL('speechtotext/transcriptions:transcribe', endpoint.endsWith('/') ? endpoint : `${endpoint}/`)
-    transcribeUrl.searchParams.append('api-version', '2025-10-15')
-
-    console.log(`[proxy-azure-speech] Forwarding to Azure Speech: ${transcribeUrl.toString()}`)
-
-    const speechResponse = await fetch(transcribeUrl.toString(), {
+    const azureRes = await fetch(transcribeUrl, {
       method: 'POST',
       headers: {
         'Ocp-Apim-Subscription-Key': apiKey,
       },
       body: formData,
-    })
+    }).catch((err: any) => err)
 
-    if (!speechResponse.ok) {
-      const errorText = await speechResponse.text()
-      console.error(`[proxy-azure-speech] Azure error: ${speechResponse.statusText}`, errorText)
-      throw new Error(`Azure error: ${speechResponse.statusText}`)
+    if (!(azureRes instanceof Response)) {
+      const msg = azureRes instanceof Error ? azureRes.message : 'request failed'
+      return NextResponse.json({ error: `Azure request failed: ${msg}`, stage: 'azure-request' }, { status: 502 })
     }
 
-    const result = await speechResponse.json()
-    console.log(`[proxy-azure-speech] Transcription successful`)
+    if (!azureRes.ok) {
+      const text = await azureRes.text()
+      console.error('Azure fast transcription error', azureRes.status, text)
+      return NextResponse.json({ error: 'Azure fast transcription failed', status: azureRes.status, azureBody: text, stage: 'azure-response' }, { status: azureRes.status })
+    }
 
-    return NextResponse.json(result)
+    const azureJson = await azureRes.json()
+
+    // Extract text from combinedPhrases
+    const combinedPhrases = azureJson?.combinedPhrases || []
+    const transcriptionText = combinedPhrases.map((p: any) => p.text || '').join(' ')
+
+    return NextResponse.json({
+      text: transcriptionText,
+      raw: azureJson,
+    })
 
   } catch (error) {
-    console.error('[proxy-azure-speech] Error:', error)
-    const message = error instanceof Error ? error.message : 'Transcription failed'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const msg = error instanceof Error ? error.message : 'Transcription failed'
+    console.error('[proxy-azure-speech] Error:', msg)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
 
-/**
- * Health check endpoint
- */
 export async function GET() {
   return NextResponse.json({ status: 'ok', service: 'proxy-azure-speech' })
 }
