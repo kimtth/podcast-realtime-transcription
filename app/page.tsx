@@ -226,9 +226,10 @@ export default function Home() {
   const playDownloaded = async (episode: DownloadedEpisode) => {
     const dl = await getDownloadedEpisode(episode.id)
     if (dl?.blob) {
-      const url = URL.createObjectURL(dl.blob)
-      // Use dl (from database) instead of episode (from state) to ensure we have fresh data including image
-      setCurrentEpisode({ ...dl, enclosureUrl: url })
+      const blobUrl = URL.createObjectURL(dl.blob)
+      // Store both blob URL (for playback) and original URL (for transcription)
+      // @ts-ignore - adding originalUrl for transcription
+      setCurrentEpisode({ ...dl, enclosureUrl: blobUrl, originalEnclosureUrl: dl.enclosureUrl })
       
       // Get the best available image: episode image > podcast image > empty
       const displayImage = dl.image || dl.podcastImage || ''
@@ -699,6 +700,7 @@ export default function Home() {
             {transcribing && transcriptionEngine === 'fasterwhisper' && (
               <FasterWhisperTranscriber
                 audioUrl={currentEpisode?.enclosureUrl || ''}
+                originalUrl={(currentEpisode as any)?.originalEnclosureUrl}
                 onTranscriptUpdate={(newSegments) => {
                   const mapped = newSegments.map(s => ({ time: s.start, text: s.text }))
                   setSegments(mapped)

@@ -17,12 +17,6 @@ const nextConfig = {
     
     return config
   },
-  // Increase API route timeout for model loading and transcription
-  experimental: {
-    serverActions: {
-      bodySizeLimit: '10mb',
-    },
-  },
 }
 
 module.exports = nextConfig

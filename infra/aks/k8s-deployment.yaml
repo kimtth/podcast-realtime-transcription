@@ -13,8 +13,6 @@ spec:
       labels:
         app: podcast
     spec:
-      nodeSelector:
-        workload: gpu
       containers:
       - name: podcast
         image: ${ACR_IMAGE}
@@ -25,13 +23,11 @@ spec:
           containerPort: 8000
         resources:
           requests:
-            memory: "8Gi"
-            cpu: "4"
-            nvidia.com/gpu: "1"
+            memory: "2Gi"
+            cpu: "1"
           limits:
-            memory: "8Gi"
-            cpu: "4"
-            nvidia.com/gpu: "1"
+            memory: "4Gi"
+            cpu: "2"
       imagePullSecrets:
       - name: acr-secret
 ---

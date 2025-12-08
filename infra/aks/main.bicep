@@ -1,10 +1,8 @@
 param location string = resourceGroup().location
 param clusterName string = 'podcast-aks'
 param nodeCount int = 1
-param vmSize string = 'Standard_D2s_v3'
-param gpuNodeCount int = 1
-param gpuVmSize string = 'Standard_NC6s_v3'
-param kubernetesVersion string = '1.27'
+param vmSize string = 'Standard_B2s'
+param kubernetesVersion string = '1.31.1'
 param networkPlugin string = 'azure'
 
 // Create User-Assigned Managed Identity
@@ -52,25 +50,6 @@ resource aksCluster 'Microsoft.ContainerService/managedClusters@2023-06-01' = {
         }
       }
     }
-  }
-}
-
-// Add GPU Node Pool
-resource gpuNodePool 'Microsoft.ContainerService/managedClusters/agentPools@2023-06-01' = {
-  parent: aksCluster
-  name: 'gpupool'
-  properties: {
-    count: gpuNodeCount
-    vmSize: gpuVmSize
-    mode: 'User'
-    type: 'VirtualMachineScaleSets'
-    nodeLabels: {
-      workload: 'gpu'
-      accelerator: 'nvidia-tesla-k80'
-    }
-    nodeTaints: [
-      'nvidia.com/gpu=true:NoSchedule'
-    ]
   }
 }
 

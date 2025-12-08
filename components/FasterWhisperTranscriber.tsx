@@ -16,10 +16,11 @@ interface Segment {
 
 interface FasterWhisperTranscriberProps {
   audioUrl: string
+  originalUrl?: string // Original CDN URL for downloaded episodes (bypasses 1MB upload limit)
   onTranscriptUpdate?: (segments: Segment[]) => void
 }
 
-export default function FasterWhisperTranscriber({ audioUrl, onTranscriptUpdate }: FasterWhisperTranscriberProps) {
+export default function FasterWhisperTranscriber({ audioUrl, originalUrl, onTranscriptUpdate }: FasterWhisperTranscriberProps) {
   const [segments, setSegments] = useState<Segment[]>([])
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -29,35 +30,39 @@ export default function FasterWhisperTranscriber({ audioUrl, onTranscriptUpdate 
   const [serverUrl, setServerUrl] = useState('')
   const [isSaved, setIsSaved] = useState(false)
 
-  const audioRef = useRef<HTMLAudioElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const segmentsRef = useRef<Segment[]>([])
 
   // Load saved config from localStorage
   useEffect(() => {
     const savedUrl = localStorage.getItem('faster_whisper_url')
-    if (savedUrl) setServerUrl(savedUrl)
+    setServerUrl(savedUrl || 'auto') // Default to auto-detect
   }, [])
 
   const saveConfig = useCallback(() => {
-    if (!serverUrl.trim()) {
-      setError('Server URL is required')
-      return
+    const urlToSave = serverUrl.trim() || 'auto'
+    
+    // Validate only if custom URL
+    if (urlToSave !== 'auto') {
+      try {
+        new URL(urlToSave) // Validate URL
+      } catch (e) {
+        setError('Invalid URL format')
+        return
+      }
     }
-    try {
-      new URL(serverUrl) // Validate URL
-      localStorage.setItem('faster_whisper_url', serverUrl)
-      setIsSaved(true)
-      setShowConfig(false)
-      setTimeout(() => setIsSaved(false), 2000)
-    } catch (e) {
-      setError('Invalid URL format')
-    }
+    
+    localStorage.setItem('faster_whisper_url', urlToSave)
+    setIsSaved(true)
+    setShowConfig(false)
+    setTimeout(() => setIsSaved(false), 2000)
   }, [serverUrl])
 
   const startTranscription = useCallback(async () => {
-    if (!serverUrl.trim()) {
-      setError('Faster-Whisper server URL not configured. Please configure in settings.')
+    const effectiveUrl = (!serverUrl || serverUrl === 'auto') ? 'auto' : serverUrl
+    
+    if (!effectiveUrl) {
+      setError('Faster-Whisper server not configured. Please configure in settings.')
       setShowConfig(true)
       return
     }
@@ -70,49 +75,26 @@ export default function FasterWhisperTranscriber({ audioUrl, onTranscriptUpdate 
       setProgress(0)
       segmentsRef.current = []
 
-      // Reset abort flag on backend before starting new transcription
-      await fetch(`${serverUrl}/reset-abort`, { method: 'POST' }).catch(() => {
-        // Ignore errors from reset endpoint
-      })
-
-      const audio = new Audio(audioUrl)
-      audio.crossOrigin = 'anonymous'
-      audioRef.current = audio
-
       abortControllerRef.current = new AbortController()
+      setProgress(25) // Show initial progress
 
-      // Fetch and transcribe audio
-      const response = await fetch(audio.src)
-      const arrayBuffer = await response.arrayBuffer()
+      // For downloaded episodes, use original URL to avoid 1MB upload limit
+      // The audioUrl is a blob URL (for playback), but originalUrl has the CDN URL (for transcription)
+      const transcriptionUrl = originalUrl || audioUrl
 
-      // Update progress during fetch
-      audio.ontimeupdate = () => {
-        if (audio.duration > 0) {
-          const progressPercent = (audio.currentTime / audio.duration) * 100
-          setProgress(progressPercent)
-        }
+      if (audioUrl.startsWith('blob:')) {
+        console.log('[FasterWhisper] Using original CDN URL for transcription:', transcriptionUrl)
+      } else {
+        console.log('[FasterWhisper] Using audio URL for transcription:', transcriptionUrl)
       }
 
-      audio.onended = () => {
-        setProgress(100)
-        setIsTranscribing(false)
-      }
-
-      audio.onerror = () => {
-        setError('Failed to load audio file')
-        setIsTranscribing(false)
-      }
-
-      // Send to Faster-Whisper server
-      const formData = new FormData()
-      const blob = new Blob([arrayBuffer], { type: 'audio/wav' })
-      formData.append('file', blob)
-
-      const transcribeResponse = await fetch(`${serverUrl}/transcribe`, {
+      // Use the proxy endpoint (server downloads from CDN)
+      const transcribeResponse = await fetch(`/api/proxy-transcribe?url=${encodeURIComponent(transcriptionUrl)}&server=${encodeURIComponent(effectiveUrl)}`, {
         method: 'POST',
-        body: formData,
         signal: abortControllerRef.current.signal,
       })
+
+      setProgress(75) // Show progress after transcription completes
 
       if (!transcribeResponse.ok) {
         throw new Error(`Server error: ${transcribeResponse.statusText}`)
@@ -153,23 +135,11 @@ export default function FasterWhisperTranscriber({ audioUrl, onTranscriptUpdate 
       abortControllerRef.current.abort()
       abortControllerRef.current = null
     }
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.currentTime = 0
-      audioRef.current = null
-    }
     setIsTranscribing(false)
     setCurrentText('')
     setProgress(0)
     setError(null)
-    
-    // Notify backend to cancel transcription
-    if (serverUrl.trim()) {
-      fetch(`${serverUrl}/cancel-transcription`, { method: 'POST' }).catch(() => {
-        // Ignore errors from cancel endpoint
-      })
-    }
-  }, [serverUrl])
+  }, [])
 
   return (
     <div className="space-y-4">
@@ -179,7 +149,9 @@ export default function FasterWhisperTranscriber({ audioUrl, onTranscriptUpdate 
             <div>
               <h3 className="text-lg font-semibold">Faster-Whisper Transcription</h3>
               <p className="text-sm text-muted-foreground">
-                GPU-accelerated transcription via local server
+                {(!serverUrl || serverUrl === 'auto') 
+                  ? 'Using built-in transcription server' 
+                  : `Using custom server: ${serverUrl.replace(/^https?:\/\//, '')}`}
               </p>
             </div>
             <div className="flex gap-2">
@@ -214,16 +186,45 @@ export default function FasterWhisperTranscriber({ audioUrl, onTranscriptUpdate 
           {showConfig && (
             <div className="space-y-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
               <div>
-                <label className="text-sm font-medium">Server URL</label>
-                <Input
-                  value={serverUrl}
-                  onChange={(e) => setServerUrl(e.target.value)}
-                  placeholder="http://localhost:8000 or http://your-server:8000"
-                  className="mt-1"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Default: http://localhost:8000
-                </p>
+                <label className="text-sm font-medium">Faster-Whisper Server</label>
+                <div className="space-y-2 mt-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      id="server-auto"
+                      name="server-type"
+                      checked={!serverUrl || serverUrl === 'auto'}
+                      onChange={() => setServerUrl('auto')}
+                      className="w-4 h-4"
+                    />
+                    <label htmlFor="server-auto" className="text-sm cursor-pointer">
+                      <strong>Auto-detect</strong> (Recommended)
+                      <p className="text-xs text-muted-foreground">Uses built-in server if available</p>
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      id="server-custom"
+                      name="server-type"
+                      checked={!!(serverUrl && serverUrl !== 'auto')}
+                      onChange={() => setServerUrl('http://')}
+                      className="w-4 h-4"
+                    />
+                    <label htmlFor="server-custom" className="text-sm cursor-pointer">
+                      <strong>Custom server</strong>
+                      <p className="text-xs text-muted-foreground">External Faster-Whisper installation</p>
+                    </label>
+                  </div>
+                </div>
+                {serverUrl && serverUrl !== 'auto' && (
+                  <Input
+                    value={serverUrl}
+                    onChange={(e) => setServerUrl(e.target.value)}
+                    placeholder="http://192.168.1.100:8000"
+                    className="mt-2"
+                  />
+                )}
               </div>
               <Button onClick={saveConfig} className="w-full">
                 Save Configuration

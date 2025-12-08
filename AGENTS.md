@@ -27,6 +27,38 @@ graph TB
   Settings -->|Credentials| Store["Browser Storage<br/>Never disk/env"]
 ```
 
+## Audio Transcription Flow (Bypassing Next.js Size Limits)
+
+**Problem**: Next.js Server Actions have a 1MB default body size limit, podcast episodes are 50-500MB
+
+**Solution**: Stream audio directly through Next.js API routes (not Server Actions) to transcription services
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant NextJS as Next.js API<br/>(Port 3000)
+    participant FastAPI as FastAPI Server<br/>(Port 8000, internal)
+    participant CDN as Podcast CDN
+    
+    Browser->>NextJS: POST /api/proxy-transcribe?url=podcast.mp3&server=localhost:8000
+    NextJS->>CDN: Download audio file
+    CDN-->>NextJS: Audio stream (50-500MB)
+    NextJS->>FastAPI: POST /transcribe with FormData
+    FastAPI-->>NextJS: Transcription result (segments)
+    NextJS-->>Browser: JSON response
+```
+
+**Key Points**:
+- **Port 3000** (Next.js): Exposed publicly in Azure Container Apps/ACI/App Service/AKS
+- **Port 8000** (FastAPI): Internal only, accessible via `localhost:8000` within container
+- Audio never touches Next.js Server Actions (no size limit)
+- Works for both Azure deployments and local development
+
+**User Experience**:
+- **Auto-detect mode** (default): Users don't configure anything, works out-of-the-box
+- **Custom server mode**: Advanced users can point to external Faster-Whisper installations
+- No need to understand internal architecture or port mappings
+
 ## Transcription Engines Comparison
 
 | Feature | Azure Speech | Faster-Whisper |
@@ -94,10 +126,10 @@ graph TB
 
 | Option | Use Case | GPU | Setup |
 |--------|----------|-----|-------|
-| **Container App** | MVP, Production | Optional | `infra/container-app/deploy.sh` |
-| **ACI** | Testing | ✗ (GPU retired July 2025) | `infra/aci/deploy.sh` |
-| **App Service** | CPU Production | ✗ | `infra/app-service/deploy.sh` |
-| **AKS** | Enterprise Scale | ✓ | `infra/aks/deploy.sh` |
+| **Container App** | MVP, Production | Optional | `infra/container-app/deploy.ps1` |
+| **ACI** | Testing | ✗ (GPU retired July 2025) | `infra/aci/deploy.ps1` |
+| **App Service** | CPU Production | ✗ | `infra/app-service/deploy.ps1` |
+| **AKS** | Enterprise Scale | ✓ | `infra/aks/deploy.ps1` |
 
 ACI: Azure Container Instances  
 AKS: Azure Kubernetes Service
@@ -107,56 +139,55 @@ AKS: Azure Kubernetes Service
 - **Azure Speech Service** - S0 tier for transcription
 - **Log Analytics** (optional) - for monitoring and diagnostics
 
-### Setup & Deployment
+### Setup & Deployment (PowerShell)
 
 **1. Setup shared resources (ACR + Speech Service)**
-```bash
-./infra/setup.sh <resource-group> <location> <acr-name> <speech-name> [--build-images]
+```powershell
+./infra/setup.ps1 -ResourceGroup <rg> -Location <location> -AcrName <acr-name> -SpeechName <speech-name> [-BuildImages]
 ```
 - Creates resource group, deploys ACR and Speech Service via Bicep
-- Outputs ACR credentials and Speech Service endpoint
-- Optional `--build-images` to build and push Docker images to ACR
-- Example: `./infra/setup.sh podcast-ack eastus podcastack podcast-transcribe --build-images`
+- Optional `-BuildImages` builds and pushes Docker images
+- Example: `./infra/setup.ps1 -ResourceGroup podcast-ack -Location eastus -AcrName podcastack -SpeechName podcast-speech-ack -BuildImages`
 
 **2. Deploy to compute platform (pick one)**
-```bash
-# Container Apps (MVP, optional GPU via container image)
-./infra/container-app/deploy.sh <rg> <location> <acr-name> <variant>
-# Example: ./infra/container-app/deploy.sh podcast-ack eastus podcastack cpu
+```powershell
+# Container Apps (MVP, optional GPU via image)
+./infra/container-app/deploy.ps1 -ResourceGroup <rg> -Location <location> -AcrName <acr-name> -ImageType cpu
 
 # Azure Container Instances (CPU-only, GPU retired July 2025)
-./infra/aci/deploy.sh <rg> <location> <acr-name>
+./infra/aci/deploy.ps1 -ResourceGroup <rg> -Location <location> -AcrName <acr-name>
 
 # App Service (CPU production)
-./infra/app-service/deploy.sh <rg> <location> <app-name> <acr-name>
+./infra/app-service/deploy.ps1 -ResourceGroup <rg> -Location <location> -AppName <app-name> -AcrName <acr-name>
 
 # Azure Kubernetes Service (enterprise scale, GPU capable)
-./infra/aks/deploy.sh <rg> <location> <cluster-name> <acr-name>
+./infra/aks/deploy.ps1 -ResourceGroup <rg> -Location <location> -ClusterName <cluster-name> -AcrName <acr-name>
 ```
 
 **3. Test all deployments**
-```bash
-./test-all-deploy.sh <resource-group> <location> <acr-name> <speech-name> [--build-images] [--target container-app|aci|app-service|aks|all]
+```powershell
+./test-all-deploy.ps1 -ResourceGroup <rg> -Location <location> -AcrName <acr-name> -SpeechName <speech-name> [-BuildImages] -Target container-app|aci|app-service|aks|all
 ```
 - Runs setup and deploys to selected target(s)
-- Example: `./test-all-deploy.sh podcast-ack eastus podcastack podcast-speech-ack --build-images --target all`
-- In Powershell: `bash -c "./test-all-deploy.sh podcast-ack eastus podcastack podcast-speech-ack --build-images --target all"`
+- Example: `./test-all-deploy.ps1 -ResourceGroup podcast-ack -Location eastus -AcrName podcastack -SpeechName podcast-speech-ack -BuildImages -Target all`
+- **The docker-compose files are only for local development.**
 
 **4. Cleanup**
-```bash
-./infra/cleanup.sh <resource-group> [--force]
+```powershell
+./infra/cleanup.ps1 -ResourceGroup <rg> [-Force]
 ```
-- Deletes resource group and all resources
-- Prompts for confirmation unless `--force` is used
-- Example: `./infra/cleanup.sh podcast-ack --force`
+- Deletes resource group and all resources; `-Force` skips confirmation
+- Example: `./infra/cleanup.ps1 -ResourceGroup podcast-ack -Force`
 
 ### Scripts Overview
-- `setup.sh` - Deploy ACR and Speech Service via Bicep, optionally build images
-- `test-all-deploy.sh` - Test all 4 deployment methods in sequence
-- `cleanup.sh` - Delete resource group and all resources
-- Individual `deploy.sh` scripts in each platform folder orchestrate platform-specific deployment
+- `setup.ps1` - Deploy ACR and Speech Service via Bicep, optionally build images
+- `test-all-deploy.ps1` - Test all 4 deployment methods in sequence
+- `cleanup.ps1` - Delete resource group and all resources
+- Individual `deploy.ps1` scripts in each platform folder orchestrate platform-specific deployment
 
-## Why CUDA 12.1 (current choice):
+## CUDA (GPU-enabled VM)
+
+Why CUDA 12.1:
 
 - Broader hardware support - Works with RTX 30xx, 40xx, A100, H100, L4, T4, and older GPUs  
 - cuDNN 8 is production-proven - Stable, widely tested, known performance characteristics  

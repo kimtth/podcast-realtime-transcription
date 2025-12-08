@@ -75,29 +75,21 @@ export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId,
 
       abortControllerRef.current = new AbortController()
 
-      const response = await fetch(audioUrl, { signal: abortControllerRef.current.signal })
-      const blob = await response.blob()
-      const arrayBuffer = await blob.arrayBuffer()
-
-      // Use multipart/form-data for Azure Speech fast transcription API
-      const formData = new FormData()
-      formData.append('audio', blob, 'audio.wav')
-      formData.append('definition', JSON.stringify({
-        locales: ['en-US']
-      }))
-
-      // Azure Speech fast transcription API endpoint
-      const transcribeUrl = new URL('speechtotext/transcriptions:transcribe', endpoint.endsWith('/') ? endpoint : `${endpoint}/`)
-      transcribeUrl.searchParams.append('api-version', '2025-10-15')
-
-      const speechResponse = await fetch(transcribeUrl.toString(), {
+      // Use backend proxy for Azure Speech (bypasses Next.js size limits)
+      const speechResponse = await fetch(`/api/proxy-azure-speech`, {
         method: 'POST',
         headers: {
-          'Ocp-Apim-Subscription-Key': apiKey,
+          'Content-Type': 'application/json',
         },
-        body: formData,
+        body: JSON.stringify({
+          audioUrl,
+          endpoint,
+          apiKey,
+        }),
         signal: abortControllerRef.current.signal,
       })
+
+      setProgress(50)
 
       if (!speechResponse.ok) {
         throw new Error(`Azure error: ${speechResponse.statusText}`)
@@ -112,10 +104,8 @@ export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId,
                                 'Transcription successful'
 
       if (transcriptionText) {
-        // Estimate duration assuming 16kHz mono 16-bit PCM; fall back to blob size heuristic
-        const bytesPerSecond = 16000 * 2 // 16kHz * 16-bit mono
-        const durationSeconds = bytesPerSecond > 0 ? blob.size / bytesPerSecond : 0
-        const durationMs = durationSeconds * 1000
+        // Use duration from Azure Speech response, or estimate from word count if unavailable
+        const durationMs = result.duration || (transcriptionText.split(' ').length * 300) // ~300ms per word average
 
         const split = splitTranscriptionIntoSegments(transcriptionText, durationMs, 8)
         const mapped: Segment[] = split.map(seg => ({
