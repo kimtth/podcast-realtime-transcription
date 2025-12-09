@@ -10,7 +10,6 @@ param(
 $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $infraDir = Join-Path $scriptDir 'infra'
-$repoRoot = $scriptDir
 
 function Get-AcrCredentials {
     param([string]$Name)
@@ -21,7 +20,7 @@ function Get-AcrCredentials {
     }
 }
 
-function Run-Setup {
+function Invoke-Setup-Resources {
     Write-Host "Setting up shared resources..." -ForegroundColor Cyan
     & (Join-Path $infraDir 'setup.ps1') -ResourceGroup $ResourceGroup -Location $Location -AcrName $AcrName -SpeechName $SpeechName -BuildImages:$BuildImages
 }
@@ -65,8 +64,8 @@ function Deploy-Aci {
           acrUsername=$($Creds.Username) `
           acrPassword=$($Creds.Password)
     $fqdn = az container show --resource-group $ResourceGroup --name 'podcast-cpu' --query "ipAddress.fqdn" -o tsv
-    Write-Host "ACI Frontend: http://$fqdn:3000" -ForegroundColor Green
-    Write-Host "ACI API: http://$fqdn:8000" -ForegroundColor Green
+    Write-Host ("ACI Frontend: http://{0}:3000" -f $fqdn) -ForegroundColor Green
+    Write-Host ("ACI API: http://{0}:8000" -f $fqdn) -ForegroundColor Green
 }
 
 function Deploy-AppService {
@@ -119,7 +118,7 @@ function Deploy-Aks {
     Write-Host "AKS deployment applied. Check service via: kubectl get svc podcast-service -n podcast" -ForegroundColor Green
 }
 
-Run-Setup
+Invoke-Setup-Resources
 $creds = Get-AcrCredentials -Name $AcrName
 
 if ($Target -eq 'all') {

@@ -181,6 +181,15 @@ AKS: Azure Kubernetes Service
 - Deletes resource group and all resources; `-Force` skips confirmation
 - Example: `./infra/cleanup.ps1 -ResourceGroup podcast-ack -Force`
 
+**5. (Optional) Update the container image**
+
+```powershell
+# Rebuild the image
+az acr build --registry <acrName> --image <imageName> --file <DockerfileName> . --output none 
+# Update the serving container
+./scripts/update-serving-container.ps1 -ResourceGroup <rg> -Location <location> -AcrName <acrName> -Target aks -AksClusterName <clusterName>
+```
+
 ### Scripts Overview
 - `setup.ps1` - Deploy ACR and Speech Service via Bicep, optionally build images
 - `test-all-deploy.ps1` - Test all 4 deployment methods in sequence
