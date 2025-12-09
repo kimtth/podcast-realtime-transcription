@@ -86,13 +86,16 @@ export async function POST(req: NextRequest) {
 
     const azureJson = await azureRes.json()
 
-    // Extract text from combinedPhrases
+    // Extract text from combinedPhrases and timestamps from phrases
     const combinedPhrases = azureJson?.combinedPhrases || []
+    const phrases = azureJson?.phrases || []
     const transcriptionText = combinedPhrases.map((p: any) => p.text || '').join(' ')
 
     return NextResponse.json({
       text: transcriptionText,
       raw: azureJson,
+      combinedPhrases,
+      phrases,
     })
 
   } catch (error) {

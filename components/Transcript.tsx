@@ -28,19 +28,18 @@ export default function Transcript({ segments, currentTime, onSeek }: Props) {
             <span>{segments.length} segments transcribed</span>
           </div>
           {segments.map((seg, i) => {
-            // Find the currently playing segment with a small tolerance (0.5s)
-            const TOLERANCE = 0.5
-            const nextSegment = segments[i + 1]
+            // Use actual start/end times if available, otherwise fall back to time-based range
+            const segStart = seg.start ?? seg.time
+            const segEnd = seg.end ?? (segments[i + 1]?.start ?? segments[i + 1]?.time ?? seg.time + 5)
             
-            // Check if current time is within this segment's range (with tolerance)
-            const isActive = currentTime >= (seg.time - TOLERANCE) && 
-              (!nextSegment || currentTime < (nextSegment.time - TOLERANCE))
+            // Check if current time is within this segment's actual time range
+            const isActive = currentTime >= segStart && currentTime < segEnd
             
             return (
               <button
                 key={i}
                 type="button"
-                onClick={() => onSeek(seg.time)}
+                onClick={() => onSeek(seg.start ?? seg.time)}
                 className={cn(
                   "w-full text-left p-3 rounded-lg cursor-pointer transition-all duration-200 border-0",
                   isActive 
@@ -53,7 +52,7 @@ export default function Transcript({ segments, currentTime, onSeek }: Props) {
                     "text-xs font-mono px-2 py-0.5 rounded-md flex-shrink-0",
                     isActive ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
                   )}>
-                    {formatTime(seg.time)}
+                    {formatTime(seg.start ?? seg.time)}
                   </span>
                   <p className={cn("text-sm leading-relaxed", isActive ? "text-primary-foreground" : "text-foreground")}>
                     {seg.text}
