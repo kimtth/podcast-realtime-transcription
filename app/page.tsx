@@ -4,7 +4,7 @@ import {
   Search, Play, Pause, ChevronLeft, Mic, Radio, Clock, Calendar, 
   Download, Upload, Heart, MoreHorizontal, Volume2, SkipBack, SkipForward,
   Headphones, ListMusic, Settings2, Sparkles, Loader2, Trash2, HardDrive,
-  Check, X
+  Check, X, Save, Brain
 } from 'lucide-react'
 import Player, { PlayerRef } from '@/components/Player'
 import Transcript from '@/components/Transcript'
@@ -15,7 +15,7 @@ import { Podcast, Episode, TranscriptSegment, DownloadedEpisode } from '@/lib/ty
 import { 
   getSubscriptions, subscribe, unsubscribe, isSubscribed, exportOPML, importOPML,
   downloadEpisode, deleteDownload, isDownloaded, getAllDownloads, getDownloadedEpisode,
-  saveTranscript, getTranscript
+  saveTranscript, getTranscript, saveExpressions, getExpressions
 } from '@/lib/storage'
 import { getSettings, addToListeningHistory, getLastPlayedEpisode } from '@/lib/appSettings'
 import { cn, formatDate, formatDuration } from '@/lib/utils'
@@ -49,6 +49,11 @@ export default function Home() {
   const [playlist, setPlaylist] = useState<Episode[]>([])
   const [currentTime, setCurrentTime] = useState(0)
   const [segments, setSegments] = useState<TranscriptSegment[]>([])
+  const [usefulExpressions, setUsefulExpressions] = useState<Array<{ phrase: string; meaning: string; example: string }>>(() => {
+    if (typeof window === 'undefined') return []
+    return getExpressions()
+  })
+  const [loadingExpressions, setLoadingExpressions] = useState(false)
   const [transcribing, setTranscribing] = useState(appSettings.enableTranscription)
   const [transcriptionEngine, setTranscriptionEngine] = useState<'azure' | 'fasterwhisper'>(appSettings.transcriptionEngine)
   const [searchProvider, setSearchProvider] = useState<'itunes' | 'podcastindex'>(appSettings.searchProvider || 'itunes')
@@ -57,6 +62,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [downloading, setDownloading] = useState<number | string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const playerRef = useRef<PlayerRef>(null)
 
   useEffect(() => { 
@@ -191,6 +197,7 @@ export default function Home() {
       setCurrentEpisode(nextEp)
       setCurrentEpisodeIndex(currentEpisodeIndex + 1)
       setSegments([])
+      setUsefulExpressions([])
       setCurrentTime(0)
     }
   }
@@ -201,6 +208,7 @@ export default function Home() {
       setCurrentEpisode(prevEp)
       setCurrentEpisodeIndex(currentEpisodeIndex - 1)
       setSegments([])
+      setUsefulExpressions([])
       setCurrentTime(0)
     }
   }
@@ -221,6 +229,90 @@ export default function Home() {
   const handleDeleteDownload = async (id: number | string) => {
     await deleteDownload(id)
     await loadDownloads()
+  }
+
+  const handleExportEpisode = async (episode: DownloadedEpisode) => {
+    try {
+      const dl = await getDownloadedEpisode(episode.id)
+      if (!dl?.blob) {
+        alert('Episode data not found')
+        return
+      }
+      const url = URL.createObjectURL(dl.blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${dl.title || episode.title}.mp3`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Export failed:', error)
+      alert(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const extractUsefulExpressions = async () => {
+    if (segments.length === 0) {
+      alert('No transcript available')
+      return
+    }
+
+    setLoadingExpressions(true)
+    try {
+      // Combine transcript from segments
+      const transcript = segments.map(s => s.text).join(' ')
+
+      if (!transcript.trim()) {
+        alert('Transcript is too short')
+        setLoadingExpressions(false)
+        return
+      }
+
+      const settings = getSettings()
+      const aiProvider = settings.aiProvider || 'openai'
+
+      if (aiProvider === 'openai' && !settings.openaiKey) {
+        alert('Please configure OpenAI API key in Settings')
+        setLoadingExpressions(false)
+        return
+      }
+
+      if (aiProvider === 'azure-openai' && (!settings.azureOpenaiKey || !settings.azureOpenaiEndpoint || !settings.azureOpenaiDeployment)) {
+        alert('Please configure Azure OpenAI credentials in Settings')
+        setLoadingExpressions(false)
+        return
+      }
+
+      const response = await fetch('/api/extract-expressions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript,
+          aiProvider,
+          openaiKey: settings.openaiKey,
+          openaiModel: settings.openaiModel,
+          azureOpenaiKey: settings.azureOpenaiKey,
+          azureOpenaiEndpoint: settings.azureOpenaiEndpoint,
+          azureOpenaiDeployment: settings.azureOpenaiDeployment,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to extract expressions')
+      }
+
+      const data = await response.json()
+      const expressions = data.expressions || []
+      setUsefulExpressions(expressions)
+      saveExpressions(expressions)
+      setLoadingExpressions(false)
+      // Open dialog to show results
+      setDialogOpen(true)
+    } catch (error) {
+      console.error('Extract expressions error:', error)
+      alert(`Failed to extract expressions: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setLoadingExpressions(false)
+    }
   }
 
   const playDownloaded = async (episode: DownloadedEpisode) => {
@@ -413,6 +505,15 @@ export default function Home() {
               </span>
             </div>
           </div>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={(e) => { e.stopPropagation(); handleExportEpisode(episode) }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-500 hover:text-blue-600"
+            title="Save to PC"
+          >
+            <Save className="w-4 h-4" />
+          </Button>
           <Button 
             variant="ghost" 
             size="icon" 
@@ -668,15 +769,33 @@ export default function Home() {
                       </div>
                       <Switch checked={transcribing} onCheckedChange={setTranscribing} />
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowSettings(true)}
-                      className="gap-2"
-                    >
-                      <Settings2 className="w-4 h-4" />
-                      <span className="text-xs">Settings</span>
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {segments.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={extractUsefulExpressions}
+                          disabled={loadingExpressions}
+                          className="gap-2"
+                        >
+                          {loadingExpressions ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Brain className="w-4 h-4" />
+                          )}
+                          <span className="text-xs">Learn</span>
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowSettings(true)}
+                        className="gap-2"
+                      >
+                        <Settings2 className="w-4 h-4" />
+                        <span className="text-xs">Settings</span>
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -689,6 +808,8 @@ export default function Home() {
                 podcastId={typeof currentPodcast?.id === 'number' ? currentPodcast.id : currentPodcast?.id ? parseInt(String(currentPodcast.id)) : undefined}
                 onSeek={(t) => playerRef.current?.seek(t)}
                 initialSegments={segments.map(s => ({ start: s.start ?? s.time, end: s.end ?? s.time + 5, text: s.text, isFinal: true }))}
+                usefulExpressions={usefulExpressions}
+                onDialogOpenChange={setDialogOpen}
                 onTranscriptUpdate={(newSegments) => {
                   const mapped = newSegments.map(s => ({ time: s.start, text: s.text, start: s.start, end: s.end }))
                   setSegments(mapped)
@@ -705,6 +826,8 @@ export default function Home() {
                 originalUrl={(currentEpisode as any)?.originalEnclosureUrl}
                 onSeek={(t) => playerRef.current?.seek(t)}
                 initialSegments={segments.map(s => ({ start: s.time, end: s.time + 5, text: s.text, isFinal: true }))}
+                usefulExpressions={usefulExpressions}
+                onDialogOpenChange={setDialogOpen}
                 onTranscriptUpdate={(newSegments) => {
                   const mapped = newSegments.map(s => ({ time: s.start, text: s.text, start: s.start, end: s.end }))
                   setSegments(mapped)

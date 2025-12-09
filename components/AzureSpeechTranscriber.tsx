@@ -16,6 +16,12 @@ interface Segment {
   isFinal: boolean
 }
 
+interface UsefulExpression {
+  phrase: string
+  meaning: string
+  example: string
+}
+
 interface AzureSpeechTranscriberProps {
   audioUrl: string
   episodeId?: number | string
@@ -23,9 +29,11 @@ interface AzureSpeechTranscriberProps {
   onTranscriptUpdate?: (segments: Segment[]) => void
   onSeek?: (time: number) => void
   initialSegments?: Segment[]
+  usefulExpressions?: UsefulExpression[]
+  onDialogOpenChange?: (open: boolean) => void
 }
 
-export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId, onTranscriptUpdate, onSeek, initialSegments }: AzureSpeechTranscriberProps) {
+export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId, onTranscriptUpdate, onSeek, initialSegments, usefulExpressions, onDialogOpenChange }: AzureSpeechTranscriberProps) {
   const [segments, setSegments] = useState<Segment[]>(initialSegments || [])
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -227,7 +235,12 @@ export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId,
             </div>
           )}
 
-          <TranscriptSegmentList segments={segments} onSeek={onSeek} />
+          <TranscriptSegmentList 
+            segments={segments} 
+            onSeek={onSeek} 
+            usefulExpressions={usefulExpressions}
+            onDialogOpenChange={onDialogOpenChange}
+          />
         </div>
       </Card>
     </div>

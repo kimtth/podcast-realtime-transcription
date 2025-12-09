@@ -259,3 +259,29 @@ export function deleteTranscript(episodeId: number | string, engine: 'azure' | '
   delete transcripts[key]
   localStorage.setItem(TRANSCRIPTS_KEY, JSON.stringify(transcripts))
 }
+
+// Useful expressions storage
+const EXPRESSIONS_KEY = 'podcast_useful_expressions'
+
+interface UsefulExpression {
+  phrase: string
+  meaning: string
+  example: string
+}
+
+export function saveExpressions(expressions: UsefulExpression[]): void {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(EXPRESSIONS_KEY, JSON.stringify(expressions))
+}
+
+export function getExpressions(): UsefulExpression[] {
+  if (typeof window === 'undefined') return []
+  const data = localStorage.getItem(EXPRESSIONS_KEY)
+  return data ? JSON.parse(data) : []
+}
+
+export function clearExpressions(): void {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(EXPRESSIONS_KEY)
+}
+
