@@ -30,5 +30,7 @@ export interface DownloadedEpisode extends Episode {
 
 export interface TranscriptSegment {
   text: string
-  time: number
+  time: number // Kept for backward compatibility with Transcript component
+  start?: number // Actual start time from transcription engine
+  end?: number // Actual end time from transcription engine
 }

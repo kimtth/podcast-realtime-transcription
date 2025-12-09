@@ -3,11 +3,11 @@
 import React, { useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Mic, Square, AlertCircle } from 'lucide-react'
 import { getSettings } from '@/lib/appSettings'
 import { saveTranscript } from '@/lib/storage'
 import { splitTranscriptionIntoSegments } from '@/lib/utils'
+import TranscriptSegmentList from './TranscriptSegmentList'
 
 interface Segment {
   start: number
@@ -31,6 +31,10 @@ export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId,
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
   const abortControllerRef = React.useRef<AbortController | null>(null)
+
+  React.useEffect(() => {
+    setSegments(initialSegments || [])
+  }, [initialSegments])
 
   const startTranscription = useCallback(async () => {
     const settings = getSettings()
@@ -95,24 +99,28 @@ export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId,
       const result = await speechResponse.json()
 
       // Prefer Azure offsets for accurate tap-to-seek
-      const phrases = Array.isArray(result?.combinedPhrases) && result.combinedPhrases.length
-        ? result.combinedPhrases
-        : Array.isArray(result?.phrases) && result.phrases.length
-          ? result.phrases
-          : null
+      // combinedPhrases has full text but no timestamps
+      // phrases array has the actual timestamps for each phrase
+      const phrases = Array.isArray(result?.phrases) && result.phrases.length
+        ? result.phrases
+        : null
 
       const azureSegments: Segment[] | null = phrases
         ? phrases
             .map((p: any) => {
-              const text = p.text || p.display || p.lexical || ''
+              const text = p.text || ''
               if (!text) return null
-              const start = (p.offsetMilliseconds ?? p.offset ?? 0) / 1000
-              const durMs = p.durationMilliseconds ?? p.duration ?? 0
-              const end = durMs ? start + durMs / 1000 : start + 5
+              const offsetMs = p.offsetMilliseconds ?? 0
+              const durationMs = p.durationMilliseconds ?? 0
+              const start = offsetMs / 1000
+              const end = (offsetMs + durationMs) / 1000
               return { start, end, text, isFinal: true }
             })
             .filter(Boolean) as Segment[]
         : null
+
+      console.log('[Azure] Phrases from API:', phrases)
+      console.log('[Azure] Segments created:', azureSegments)
 
       const transcriptionText = result.text || result.combinedPhrases?.[0]?.text || result.phrases?.[0]?.text || ''
 
@@ -136,7 +144,7 @@ export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId,
             episodeId,
             podcastId,
             'azure',
-            mapped.map(m => ({ text: m.text, time: m.start }))
+            mapped.map(m => ({ text: m.text, time: m.start, start: m.start, end: m.end }))
           )
         }
 
@@ -219,25 +227,7 @@ export default function AzureSpeechTranscriber({ audioUrl, episodeId, podcastId,
             </div>
           )}
 
-          {segments.length > 0 && (
-            <ScrollArea className="h-64 border rounded-lg p-4">
-              <div className="space-y-2">
-                {segments.map((seg, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => onSeek?.(seg.start)}
-                    className="w-full text-left text-sm p-2 rounded hover:bg-muted transition"
-                  >
-                    <span className="font-mono text-xs text-muted-foreground mr-2">
-                      {new Date(seg.start * 1000).toISOString().substr(11, 8)}
-                    </span>
-                    <span>{seg.text}</span>
-                  </button>
-                ))}
-              </div>
-            </ScrollArea>
-          )}
+          <TranscriptSegmentList segments={segments} onSeek={onSeek} />
         </div>
       </Card>
     </div>

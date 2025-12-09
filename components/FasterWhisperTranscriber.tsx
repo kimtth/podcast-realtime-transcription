@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Mic, Square, AlertCircle } from 'lucide-react'
 import { getSettings } from '@/lib/appSettings'
+import TranscriptSegmentList from './TranscriptSegmentList'
 
 interface Segment {
   start: number
@@ -30,6 +30,10 @@ export default function FasterWhisperTranscriber({ audioUrl, originalUrl, onTran
 
   const abortControllerRef = useRef<AbortController | null>(null)
   const segmentsRef = useRef<Segment[]>([])
+
+  useEffect(() => {
+    setSegments(initialSegments || [])
+  }, [initialSegments])
 
   const startTranscription = useCallback(async () => {
     const settings = getSettings()
@@ -151,25 +155,7 @@ export default function FasterWhisperTranscriber({ audioUrl, originalUrl, onTran
             </div>
           )}
 
-          {segments.length > 0 && (
-            <ScrollArea className="h-64 border rounded-lg p-4">
-              <div className="space-y-2">
-                {segments.map((seg, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => onSeek?.(seg.start)}
-                    className="w-full text-left text-sm p-2 rounded hover:bg-muted transition"
-                  >
-                    <span className="font-mono text-xs text-muted-foreground mr-2">
-                      {new Date(seg.start * 1000).toISOString().substr(11, 8)}
-                    </span>
-                    <span>{seg.text}</span>
-                  </button>
-                ))}
-              </div>
-            </ScrollArea>
-          )}
+          <TranscriptSegmentList segments={segments} onSeek={onSeek} />
         </div>
       </Card>
     </div>

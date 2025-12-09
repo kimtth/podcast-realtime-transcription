@@ -688,9 +688,9 @@ export default function Home() {
                 episodeId={currentEpisode?.id}
                 podcastId={typeof currentPodcast?.id === 'number' ? currentPodcast.id : currentPodcast?.id ? parseInt(String(currentPodcast.id)) : undefined}
                 onSeek={(t) => playerRef.current?.seek(t)}
-                initialSegments={segments.map(s => ({ start: s.time, end: s.time + 5, text: s.text, isFinal: true }))}
+                initialSegments={segments.map(s => ({ start: s.start ?? s.time, end: s.end ?? s.time + 5, text: s.text, isFinal: true }))}
                 onTranscriptUpdate={(newSegments) => {
-                  const mapped = newSegments.map(s => ({ time: s.start, text: s.text }))
+                  const mapped = newSegments.map(s => ({ time: s.start, text: s.text, start: s.start, end: s.end }))
                   setSegments(mapped)
                   if (currentEpisode && currentPodcast) {
                     saveTranscript(currentEpisode.id, getPodcastIdAsNumber(currentPodcast.id), 'azure', mapped)
@@ -706,7 +706,7 @@ export default function Home() {
                 onSeek={(t) => playerRef.current?.seek(t)}
                 initialSegments={segments.map(s => ({ start: s.time, end: s.time + 5, text: s.text, isFinal: true }))}
                 onTranscriptUpdate={(newSegments) => {
-                  const mapped = newSegments.map(s => ({ time: s.start, text: s.text }))
+                  const mapped = newSegments.map(s => ({ time: s.start, text: s.text, start: s.start, end: s.end }))
                   setSegments(mapped)
                   if (currentEpisode && currentPodcast) {
                     saveTranscript(currentEpisode.id, getPodcastIdAsNumber(currentPodcast.id), 'fasterwhisper', mapped)
