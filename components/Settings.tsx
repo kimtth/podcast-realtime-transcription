@@ -1,11 +1,10 @@
 'use client'
 import { useState } from 'react'
-import { X, RotateCcw, Download, Upload, Trash2, Palette } from 'lucide-react'
+import { X, RotateCcw, Download, Upload, Trash2, Palette, Brain } from 'lucide-react'
 import { Card, CardContent } from './ui/card'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Switch } from './ui/switch'
-import { Badge } from './ui/badge'
 import {
   getSettings,
   toggleTranscription,
@@ -19,6 +18,9 @@ import {
   updateAzureSpeechCredentials,
   updateAzureSpeechLocale,
   updateFasterWhisperUrl,
+  updateOpenAICredentials,
+  updateAzureOpenAICredentials,
+  setAIProvider,
   exportSettings,
   importSettings,
   resetSettings,
@@ -414,6 +416,154 @@ export default function Settings({ onClose }: SettingsProps) {
                   checked={settings.autoResume}
                   onCheckedChange={handleAutoResumeToggle}
                 />
+              </div>
+            </div>
+
+            {/* AI Language Learning Settings */}
+            <div className="border-b border-border pb-6">
+              <h3 className="font-semibold text-lg mb-4 text-foreground flex items-center gap-2">
+                <Brain className="w-5 h-5" />
+                Language Learning
+              </h3>
+              
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">AI Provider</label>
+                  <div className="grid grid-cols-1 gap-2">
+                    <button
+                      onClick={() => {
+                        setAIProvider('openai')
+                        setSettings({ ...settings, aiProvider: 'openai' })
+                        setSaved(true)
+                        setTimeout(() => setSaved(false), 2000)
+                      }}
+                      className={`p-3 rounded-lg border-2 transition-all text-left ${
+                        settings.aiProvider === 'openai'
+                          ? 'border-foreground bg-green-50'
+                          : 'border-border opacity-50 hover:opacity-75'
+                      }`}
+                    >
+                      <div className="font-medium text-sm">OpenAI</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Cloud-based • High accuracy • Paid
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAIProvider('azure-openai')
+                        setSettings({ ...settings, aiProvider: 'azure-openai' })
+                        setSaved(true)
+                        setTimeout(() => setSaved(false), 2000)
+                      }}
+                      className={`p-3 rounded-lg border-2 transition-all text-left ${
+                        settings.aiProvider === 'azure-openai'
+                          ? 'border-foreground bg-blue-50'
+                          : 'border-border opacity-50 hover:opacity-75'
+                      }`}
+                    >
+                      <div className="font-medium text-sm">Azure OpenAI</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Azure cloud • Enterprise • Paid
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {settings.aiProvider === 'openai' && (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-xs text-green-700">
+                        <strong>OpenAI:</strong> Uses GPT models to extract useful expressions for B1-B2 level language learners from podcast transcripts.
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-foreground">API Key</label>
+                      <Input
+                        type="password"
+                        value={settings.openaiKey || ''}
+                        onChange={(e) => {
+                          const updated = { ...settings, openaiKey: e.target.value }
+                          setSettings(updated)
+                          updateOpenAICredentials(e.target.value, updated.openaiModel || 'gpt-4o-mini')
+                          setSaved(true)
+                          setTimeout(() => setSaved(false), 2000)
+                        }}
+                        placeholder="Enter your OpenAI API key"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-foreground">Model Name</label>
+                      <Input
+                        type="text"
+                        value={settings.openaiModel || ''}
+                        onChange={(e) => {
+                          const updated = { ...settings, openaiModel: e.target.value }
+                          setSettings(updated)
+                          updateOpenAICredentials(updated.openaiKey || '', e.target.value)
+                          setSaved(true)
+                          setTimeout(() => setSaved(false), 2000)
+                        }}
+                        placeholder="e.g., gpt-5-mini, gpt-5, etc."
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Check OpenAI documentation for available models</p>
+                    </div>
+                  </div>
+                )}
+
+                {settings.aiProvider === 'azure-openai' && (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-xs text-blue-700">
+                        <strong>Azure OpenAI:</strong> Enterprise-grade GPT models hosted on Azure for language learning support.
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-foreground">API Key</label>
+                      <Input
+                        type="password"
+                        value={settings.azureOpenaiKey || ''}
+                        onChange={(e) => {
+                          const updated = { ...settings, azureOpenaiKey: e.target.value }
+                          setSettings(updated)
+                          updateAzureOpenAICredentials(e.target.value, updated.azureOpenaiEndpoint || '', updated.azureOpenaiDeployment || '')
+                          setSaved(true)
+                          setTimeout(() => setSaved(false), 2000)
+                        }}
+                        placeholder="Enter your Azure OpenAI API key"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-foreground">Endpoint</label>
+                      <Input
+                        type="text"
+                        value={settings.azureOpenaiEndpoint || ''}
+                        onChange={(e) => {
+                          const updated = { ...settings, azureOpenaiEndpoint: e.target.value }
+                          setSettings(updated)
+                          updateAzureOpenAICredentials(updated.azureOpenaiKey || '', e.target.value, updated.azureOpenaiDeployment || '')
+                          setSaved(true)
+                          setTimeout(() => setSaved(false), 2000)
+                        }}
+                        placeholder="e.g., https://your-resource.openai.azure.com/"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-foreground">Deployment Name</label>
+                      <Input
+                        type="text"
+                        value={settings.azureOpenaiDeployment || ''}
+                        onChange={(e) => {
+                          const updated = { ...settings, azureOpenaiDeployment: e.target.value }
+                          setSettings(updated)
+                          updateAzureOpenAICredentials(updated.azureOpenaiKey || '', updated.azureOpenaiEndpoint || '', e.target.value)
+                          setSaved(true)
+                          setTimeout(() => setSaved(false), 2000)
+                        }}
+                        placeholder="e.g., gpt-4o"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -4,9 +4,10 @@ Lean podcast player with multi-engine transcription and switchable search provid
 A demo application to evaluate multiple options for Azure application deployments.  
 
 ## What it does
-- Play, subscribe, download, and resume podcasts
+- Play, subscribe, download (**supports local download**), and resume podcasts
 - Live transcripts: ☁️ Azure Speech, ⚡ Faster-Whisper
 - Choose search source: iTunes (no auth) or Podcast Index (user key/secret)
+- Extract & learn: extracts idiomatic phrases, phrasal verbs, collocations from transcripts
 
 ## Run it
 ```bash
@@ -28,6 +29,11 @@ npm run dev
 ## Transcription engines
 - **Azure Speech:** cloud accuracy, needs your Azure key/region (saved locally)
 - **Faster-Whisper:** self-hosted FastAPI server (python)
+
+## Language Learning
+- **Extract Expressions:** OpenAI or Azure OpenAI (configure in Settings) extracts idiomatic phrases, phrasal verbs, collocations from transcripts
+- **Targets intermediate English learners** 
+- **Export:** Download expressions as CSV
 
 ## Privacy
 - API keys and server URLs live in your browser storage only. (no .env file)

@@ -14,15 +14,23 @@ interface Segment {
   isFinal: boolean
 }
 
+interface UsefulExpression {
+  phrase: string
+  meaning: string
+  example: string
+}
+
 interface FasterWhisperTranscriberProps {
   audioUrl: string
   originalUrl?: string // Original CDN URL for downloaded episodes (bypasses 1MB upload limit)
   onTranscriptUpdate?: (segments: Segment[]) => void
   onSeek?: (time: number) => void
   initialSegments?: Segment[]
+  usefulExpressions?: UsefulExpression[]
+  onDialogOpenChange?: (open: boolean) => void
 }
 
-export default function FasterWhisperTranscriber({ audioUrl, originalUrl, onTranscriptUpdate, onSeek, initialSegments }: FasterWhisperTranscriberProps) {
+export default function FasterWhisperTranscriber({ audioUrl, originalUrl, onTranscriptUpdate, onSeek, initialSegments, usefulExpressions, onDialogOpenChange }: FasterWhisperTranscriberProps) {
   const [segments, setSegments] = useState<Segment[]>(initialSegments || [])
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -155,7 +163,12 @@ export default function FasterWhisperTranscriber({ audioUrl, originalUrl, onTran
             </div>
           )}
 
-          <TranscriptSegmentList segments={segments} onSeek={onSeek} />
+          <TranscriptSegmentList 
+            segments={segments} 
+            onSeek={onSeek} 
+            usefulExpressions={usefulExpressions}
+            onDialogOpenChange={onDialogOpenChange}
+          />
         </div>
       </Card>
     </div>

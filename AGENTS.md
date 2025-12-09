@@ -9,17 +9,22 @@ graph TB
   Search["Search API"]
   Episodes["Episodes API"]
   Transcriber["Transcriber Component"]
+  Learning["Language Learning<br/>Extract Expressions"]
   
   Browser --> Settings
   Browser --> Search
   Browser --> Episodes
   Browser --> Transcriber
+  Browser --> Learning
   
   Search -->|Provider| iTunes["iTunes API<br/>No Auth"]
   Search -->|Provider| PodIndex["Podcast Index<br/>Auth"]
   
   Transcriber -->|Engine| AzureSpeech["Azure Speech<br/>REST API"]
   Transcriber -->|Engine| FastWS["Faster-Whisper<br/>FastAPI"]
+  
+  Learning -->|Provider| OpenAI["OpenAI API"]
+  Learning -->|Provider| AzureOpenAI["Azure OpenAI<br/>REST API"]
   
   FastWS --> GPU["GPU: CUDA 12.1<br/>PyTorch 2.3.1"]
   FastWS --> CPU["CPU: PyTorch 2.3.1"]
@@ -98,6 +103,7 @@ sequenceDiagram
 - **Faster-Whisper**: Audio → your GPU/CPU, transcripts local, zero cloud calls
 - **Search Keys**: Browser localStorage only (JSON stringify), never sent to app server
 - **Podcast Index Auth**: via headers, keys sent only to Podcast Index
+- **Language Learning**: Credentials stored in browser, sent directly to OpenAI/Azure OpenAI, never routed through app server
 
 ## Frontend Stack
 
@@ -111,7 +117,8 @@ sequenceDiagram
 
 **No environment files (.env) needed**:
 - Podcast Index credentials → User enters in Settings UI
-- Azure Speech credentials → User enters in Settings UI  
+- Azure Speech credentials → User enters in Settings UI
+- OpenAI/Azure OpenAI credentials → User enters in Settings UI (Language Learning)
 - All credentials stored in browser (localStorage), sent via request headers or form data
 - Docker: `docker-compose -f docker-compose.gpu.yml up` or `.cpu.yml`
 

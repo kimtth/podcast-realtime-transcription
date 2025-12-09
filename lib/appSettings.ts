@@ -11,6 +11,13 @@ export interface AppSettings {
   searchProvider: 'itunes' | 'podcastindex'
   podcastIndexKey?: string
   podcastIndexSecret?: string
+  // AI Language Learning
+  aiProvider?: 'openai' | 'azure-openai'
+  openaiKey?: string
+  openaiModel?: string
+  azureOpenaiKey?: string
+  azureOpenaiEndpoint?: string
+  azureOpenaiDeployment?: string
   listeningHistory: {
     episodeId: number | string
     podcastId: number
@@ -37,8 +44,14 @@ const DEFAULT_SETTINGS: AppSettings = {
   searchProvider: 'itunes',
   podcastIndexKey: '',
   podcastIndexSecret: '',
+  aiProvider: 'openai',
+  openaiKey: '',
+  openaiModel: 'gpt-4o-mini',
+  azureOpenaiKey: '',
+  azureOpenaiEndpoint: '',
+  azureOpenaiDeployment: '',
   listeningHistory: [],
-  maxHistoryItems: 50,
+  maxHistoryItems: 10,
   accentColor: 'purple',
   buttonStyle: 'solid',
   iconColor: 'primary',
@@ -104,6 +117,18 @@ export function updateFasterWhisperUrl(url: string): void {
   saveSettings({ fasterWhisperUrl: url || 'auto' })
 }
 
+export function updateOpenAICredentials(key: string, model: string): void {
+  saveSettings({ openaiKey: key, openaiModel: model })
+}
+
+export function updateAzureOpenAICredentials(key: string, endpoint: string, deployment: string): void {
+  saveSettings({ azureOpenaiKey: key, azureOpenaiEndpoint: endpoint, azureOpenaiDeployment: deployment })
+}
+
+export function setAIProvider(provider: 'openai' | 'azure-openai'): void {
+  saveSettings({ aiProvider: provider })
+}
+
 // Listening history
 export function addToListeningHistory(episodeId: number | string, podcastId: number, lastPosition: number): void {
   const settings = getSettings()
@@ -150,6 +175,12 @@ export function exportSettings(): string {
     searchProvider: settings.searchProvider,
     podcastIndexKey: settings.podcastIndexKey || '',
     podcastIndexSecret: settings.podcastIndexSecret || '',
+    aiProvider: settings.aiProvider || 'openai',
+    openaiKey: settings.openaiKey || '',
+    openaiModel: settings.openaiModel || 'gpt-4o-mini',
+    azureOpenaiKey: settings.azureOpenaiKey || '',
+    azureOpenaiEndpoint: settings.azureOpenaiEndpoint || '',
+    azureOpenaiDeployment: settings.azureOpenaiDeployment || '',
     maxHistoryItems: settings.maxHistoryItems,
     accentColor: settings.accentColor,
     buttonStyle: settings.buttonStyle,
