@@ -106,17 +106,19 @@ export default function TranscriptSegmentList({ segments, onSeek, compact = true
                     <div className="px-4 py-3 text-sm font-medium border-b bg-amber-50/50">
                       💡 Useful Expressions for Learning ({usefulExpressions.length})
                     </div>
-                    <div className="bg-white max-h-64 overflow-y-auto p-4 space-y-3">
-                      {usefulExpressions.map((expr, idx) => (
-                        <div key={idx} className="text-sm border-l-2 border-amber-400 pl-3 bg-amber-50/30 rounded p-2">
-                          <div className="font-semibold text-foreground">{expr.phrase}</div>
-                          <div className="text-xs text-muted-foreground mt-1">📌 {expr.meaning}</div>
-                          <div className="text-xs italic text-muted-foreground mt-2 bg-amber-100/50 p-2 rounded">
-                            ✏️ {expr.example}
+                    <ScrollArea className="max-h-64">
+                      <div className="p-4 space-y-3">
+                        {usefulExpressions.map((expr, idx) => (
+                          <div key={idx} className="text-sm border-l-2 border-amber-400 pl-3 bg-amber-50/30 rounded p-2">
+                            <div className="font-semibold text-foreground">{expr.phrase}</div>
+                            <div className="text-xs text-muted-foreground mt-1">📌 {expr.meaning}</div>
+                            <div className="text-xs italic text-muted-foreground mt-2 bg-amber-100/50 p-2 rounded">
+                              ✏️ {expr.example}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
                   </div>
 
                   {/* Export Button */}
@@ -133,12 +135,14 @@ export default function TranscriptSegmentList({ segments, onSeek, compact = true
                   </div>
                 </div>
               )}
-              <div className="flex-1 flex flex-col border rounded-lg">
+              <div className="flex-1 flex flex-col border rounded-lg min-h-0">
                 <div className="px-4 py-3 text-sm font-medium border-b">
                   Transcript ({segments.length} segments)
                 </div>
-                <ScrollArea className="flex-1">
-                  <SegmentItems inDialog />
+                <ScrollArea className="flex-1 min-h-0">
+                  <div className="p-4">
+                    <SegmentItems inDialog />
+                  </div>
                 </ScrollArea>
               </div>
             </div>
